@@ -1,7 +1,9 @@
 Pattern Power!!
 ================
 
-Design powerful patterns for matching and data extraction. Then splice them into your program with Template Haskell.
+Design powerful patterns for matching and data extraction. Then inject them into your program with Template Haskell QuasiQuoters.
+
+This project abstracts work from colah/HaskSymb.
 
 Example Usage
 -------------
@@ -37,4 +39,6 @@ Just [("a",1),("b",2)]
 Nothing
 ```
 
-Then you can inject your pattern as a real Haskell Pattern with `$(finishPat ...)`, for example `$(finishPat Wild)`. This requires TemplateHaskell and ViewPatterns.
+If Template Haskell supported pattern splices, you could inject your pattern as a real Haskell Pattern with `$(finishPat ...)`, for example `$(finishPat Wild)`. Right now, one can only do QuasiQuoters, but this makes it very convenient to write them! Note that ViewPatterns are necessary.
+
+ 
