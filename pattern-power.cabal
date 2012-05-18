@@ -1,0 +1,17 @@
+Name:                pattern-power
+Version:             0.0.1
+cabal-version:       >= 1.6
+Synopsis:            For building patterns for matching.
+Description:         
+License:             GPL
+Author:              Christopher Olah
+Maintainer:          Christopher Olah <chris@colah.ca>
+Homepage:            https://github.com/colah/ImplicitCAD
+build-type:          Simple
+Category:            Graphics
+
+Library
+    Build-Depends:       base >= 3 && < 5, template-haskell
+    Extensions:          ViewPatterns, TemplateHaskell, GADTs
+    Exposed-Modules:   
+        Data.Pattern
