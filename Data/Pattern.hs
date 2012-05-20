@@ -19,14 +19,14 @@ import Control.Monad (guard)
 -- the functions both at compile and run time.
 
 data PrePat a b where
-	Wild :: PrePat a b
-	Free :: String -> PrePat a a
-	Guard  :: (Exp, a -> Bool) -> PrePat a b -> PrePat a b
-	Const :: (Eq a, Data a) => a -> PrePat a b
+	Wild       :: PrePat a b
+	Free       :: String -> PrePat a a
+	Guard      :: (Exp, a -> Bool) -> PrePat a b -> PrePat a b
+	Const      :: (Eq a) => (Exp, a) -> PrePat a b
 	PreProcess :: (Exp, a -> Maybe b) -> PrePat b c -> PrePat a c
-	ListPat :: (Data a) => [ListPatMods a] -> [PrePat a b] -> PrePat [a] b
+	ListPat    :: (Eq b) => [ListPatMods a] -> [PrePat a b] -> PrePat [a] b
 
-data ListPatMods a = Commutative | FillMissing a | CompressExtra (Exp, [a] -> a)
+data ListPatMods a = Commutative | FillMissing (Exp, a) | CompressExtra (Exp, [a] -> a)
 
 -- Our internal representation:
 
@@ -43,16 +43,19 @@ toExp (Free name) =
 	[| Free $(litE $ StringL name) |]
 toExp (Guard (exp, _) child) = 
 	[| Guard ( $(dataToExpQ (const Nothing) exp), $(return $ exp) ) $(toExp child) |]
-toExp (Const a) = 
-	[| Const $(dataToExpQ (const Nothing) a) |]
+toExp (Const (exp, _) ) = 
+	[| Const ( $(dataToExpQ (const Nothing) exp), $(return $ exp) ) |]
 toExp (PreProcess (exp, _) child) = 
-	[| Guard ( $(dataToExpQ (const Nothing) exp), $(return $ exp) ) $(toExp child) |]
+	[| PreProcess ( $(dataToExpQ (const Nothing) exp), $(return $ exp) ) $(toExp child) |]
 toExp (ListPat mods child) = 
 	[| ListPat $(listE $ map patModToExp mods) $(listE $ map toExp child) |]
 	where
-		patModToExp Commutative = [| Commutative |]
-		patModToExp 	(FillMissing a) = [| FillMissing $(dataToExpQ (const Nothing) a) |]
-		patModToExp (CompressExtra (exp, _)) = [| CompressExtra ( $(dataToExpQ (const Nothing) exp), $(return $ exp) ) |]
+		patModToExp Commutative = 
+			[| Commutative |]
+		patModToExp 	(FillMissing (exp, _)) = 
+			[| FillMissing ( $(dataToExpQ (const Nothing) exp), $(return $ exp) )  |]
+		patModToExp (CompressExtra (exp, _)) = 
+			[| CompressExtra ( $(dataToExpQ (const Nothing) exp), $(return $ exp) ) |]
 
 
 -- Convert an external PrePat into our internal representation, Pat
@@ -61,7 +64,7 @@ toPat :: PrePat a b -> Pattern a b
 toPat Wild = wild
 toPat (Free name) = free name
 toPat (Guard (_, rule) child ) = mustPass rule (toPat child)
-toPat (Const a) = constPat a
+toPat (Const (_,a) ) = constPat a
 toPat (PreProcess (_, preprocessor) child ) = preprocess preprocessor (toPat child)
 toPat (ListPat mods prepats) =
 	let
@@ -73,13 +76,13 @@ toPat (ListPat mods prepats) =
 		isCompress a = not $ (isFill a || isC a)
 		listPatUsed = if null $ filter isC mods then listPat else listPatC
 	in case (filter isFill mods, filter isCompress mods) of
-		((FillMissing fill):_, (CompressExtra (_,compress)):_ ) -> 
-			flexifyListPat listPatUsed (Just fill) (Just compress) pats
+		((FillMissing (_, fill)):_, (CompressExtra (_,compress)):_ ) -> 
+			requireEqVarsEq $ flexifyListPat listPatUsed (Just fill) (Just compress) pats
 		([], (CompressExtra (_, compress) ):_ ) ->
-			flexifyListPat listPatUsed (Nothing) (Just compress) pats
-		((FillMissing fill):_, []) -> 
-			flexifyListPat listPatUsed (Just fill) (Nothing) pats
-		([],[]) -> listPatUsed pats
+			requireEqVarsEq $ flexifyListPat listPatUsed (Nothing) (Just compress) pats
+		((FillMissing (_, fill)):_, []) -> 
+			requireEqVarsEq $ flexifyListPat listPatUsed (Just fill) (Nothing) pats
+		([],[]) -> requireEqVarsEq $ listPatUsed pats
 
 		
 -- For testing patterns we are designing, one can use PrePat
@@ -193,10 +196,10 @@ requireEqVarsEq (Pattern vars childFunc) = Pattern (List.nub vars) matchFunc
 			return $ foldl (.) id [foldl (.) id [dropPos pos | pos <- tail poses] | (_,poses) <- varCopies] $ vals
 
 
-finishPat :: (Eq b) => PrePat a b -> Q Pat
+finishPat :: PrePat a b -> Q Pat
 finishPat prepat = 
 	let
-		pat = requireEqVarsEq $ toPat prepat
+		pat = toPat prepat
 		vars = getVars pat
 		varpat = ListP $ map ( VarP . mkName) vars
 	in 
